@@ -8,3 +8,8 @@ TAGS
 .project
 .settings
 .classpath
+
+# Test directorie
+.output
+.release
+.corpora
