@@ -3,3 +3,8 @@
 /fitsBasicTestOutput.xml
 CVS
 TAGS
+
+# Eclipse
+.project
+.settings
+.classpath
