@@ -4,6 +4,9 @@
 CVS
 TAGS
 
+# FITS jar from lib
+lib/fits.jar
+
 # Eclipse
 .project
 .settings
