@@ -3,3 +3,6 @@
 /fitsBasicTestOutput.xml
 CVS
 TAGS
+*~
+lib/fits.jar
+tools/fido/argparselocal.pyc

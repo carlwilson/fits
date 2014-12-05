@@ -22,10 +22,20 @@ import java.text.DateFormat;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
+import java.util.Comparator;
 import java.util.Date;
+import java.util.Hashtable;
+import java.util.Iterator;
+import java.util.LinkedHashMap;
+import java.util.LinkedList;
 import java.util.List;
 import java.util.ListIterator;
+import java.util.Map;
+import java.util.TreeMap;
 
+import org.apache.derby.tools.sysinfo;
+import org.apache.log4j.Logger;
 import org.jdom.Attribute;
 import org.jdom.Document;
 import org.jdom.Element;
@@ -38,9 +48,9 @@ import edu.harvard.hul.ois.fits.Fits;
 import edu.harvard.hul.ois.fits.FitsOutput;
 import edu.harvard.hul.ois.fits.exceptions.FitsConfigurationException;
 import edu.harvard.hul.ois.fits.identity.ExternalIdentifier;
-import edu.harvard.hul.ois.fits.identity.ToolIdentity;
 import edu.harvard.hul.ois.fits.identity.FitsIdentity;
 import edu.harvard.hul.ois.fits.identity.FormatVersion;
+import edu.harvard.hul.ois.fits.identity.ToolIdentity;
 import edu.harvard.hul.ois.fits.tools.Tool;
 import edu.harvard.hul.ois.fits.tools.ToolInfo;
 import edu.harvard.hul.ois.fits.tools.ToolOutput;
@@ -50,6 +60,8 @@ public class OISConsolidator implements ToolOutputConsolidator {
 
     private static Namespace xsiNS = Namespace.getNamespace("xsi","http://www.w3.org/2001/XMLSchema-instance");        
 
+    private Logger logger = Logger.getLogger(this.getClass());
+    
 	private boolean reportConflicts;
 	private boolean displayToolOutput;
 	private Document formatTree;
@@ -65,6 +77,7 @@ public class OISConsolidator implements ToolOutputConsolidator {
 	private final static Namespace fitsNS = Namespace.getNamespace(Fits.XML_NAMESPACE);
 	
 	public OISConsolidator() throws FitsConfigurationException {
+		
 		reportConflicts = Fits.config.getBoolean("output.report-conflicts",true);
 		displayToolOutput = Fits.config.getBoolean("output.display-tool-output",false);
 		SAXBuilder saxBuilder = new SAXBuilder();
@@ -253,7 +266,12 @@ public class OISConsolidator implements ToolOutputConsolidator {
 		return consolidatedElements;	
 	}
 	
-	private boolean isRepeatableElement(List<Element> fitsElements) {
+	private List<Element> sortByFrequence(List<Element> fitsElements) {
+
+      return fitsElements;
+  }
+
+  private boolean isRepeatableElement(List<Element> fitsElements) {
 		String name = fitsElements.get(0).getName();
 		if(repeatableElements.contains(name)) {
 			return true;
@@ -342,18 +360,51 @@ public class OISConsolidator implements ToolOutputConsolidator {
 		for(ToolOutput result : results) {			
 			if(result.getTool().canIdentify()) {
 				List<ToolIdentity> identList = result.getFileIdentity();
+				Map<ToolIdentity,Integer> frequency = new Hashtable<ToolIdentity,Integer>();
 				for(ToolIdentity ident : identList) {
-					identities.add(ident);
+				  int counter=0;
+				  for(ToolOutput to : results){
+				    if(to.getTool().canIdentify()) {
+		                List<ToolIdentity> identList2 = to.getFileIdentity();
+		                for(ToolIdentity ident2 :identList2){
+		                  if(ident.getMime().equalsIgnoreCase(ident2.getMime())){
+		                    counter++;
+		                  }
+		                }
+				    }
+				  }
+				  frequency.put(ident, counter);
 				}
+				identities.addAll(orderByFrequency(frequency));
+				
 			}
 		}
 		return identities;
 	}
 	
+	
+	private List<ToolIdentity> orderByFrequency(Map<ToolIdentity,Integer> map) {
+	  List<Map.Entry> a = new ArrayList<Map.Entry>(map.entrySet());
+	  Collections.sort(a,
+	           new Comparator() {
+	               public int compare(Object o1, Object o2) {
+	                   Map.Entry e1 = (Map.Entry) o1;
+	                   Map.Entry e2 = (Map.Entry) o2;
+	                   return ((Comparable) e2.getValue()).compareTo(e1.getValue());
+	               }
+	           });
+
+	  
+	  List<ToolIdentity> ordered = new ArrayList<ToolIdentity>();
+	  for (Map.Entry e : a) {
+	    ToolIdentity ti = (ToolIdentity) e.getKey();
+	      ordered.add((ToolIdentity) e.getKey());
+	  }
+	  return ordered;
+	} 
 	private boolean identitiesMatch(ToolIdentity a, FitsIdentity b) {
-		//if format and mimetype match
-		if(a.getFormat().equalsIgnoreCase(b.getFormat())
-				&& a.getMime().equalsIgnoreCase(b.getMimetype())) {
+		if(/*a.getFormat().equalsIgnoreCase(b.getFormat())
+				&& */a.getMime().equalsIgnoreCase(b.getMimetype())) {
 			return true;
 		}
 		else {
@@ -384,7 +435,7 @@ public class OISConsolidator implements ToolOutputConsolidator {
 	private List<FitsIdentity> consolidateIdentities(List<ToolIdentity> identities) {
 		List<FitsIdentity> consolidatedIdentities = new ArrayList<FitsIdentity>();
 		for(ToolIdentity ident : identities) {
-			ListIterator iter = consolidatedIdentities.listIterator();
+			ListIterator<FitsIdentity> iter = consolidatedIdentities.listIterator();
 			boolean anyMatches = false;
 			boolean formatTreeMatch = false;
 			while ( iter.hasNext() ) {
@@ -405,6 +456,7 @@ public class OISConsolidator implements ToolOutputConsolidator {
 				else {			
 					int matchCondition = checkFormatTree(ident,identitySection);
 					if(matchCondition == -1) {
+						logger.debug(ident.getFormat() + " is more specific than " + identitySection.getFormat() + " tossing out " + identitySection.getToolName());
 						//ident is more specific.  Most specific identity should always
 						// be first element in list
 						FitsIdentity newSection = new FitsIdentity(ident);
@@ -423,6 +475,7 @@ public class OISConsolidator implements ToolOutputConsolidator {
 					}
 					// existing format is more specific
 					else if(matchCondition == 1) {
+						logger.debug(identitySection.getFormat() + " is more specific than " + ident.getFormat() + " tossing out " + ident.getToolInfo().getName());
 						formatTreeMatch = true;
 						//do nothing, keep going and add to consolidated identities if no other matches
 					}
@@ -448,6 +501,12 @@ public class OISConsolidator implements ToolOutputConsolidator {
 	 * @return
 	 */
 	private int checkFormatTree(ToolIdentity a, FitsIdentity b) {
+		
+		//if formats are equal then just return
+		if(a.getFormat().equals(b.getFormat())) {
+			return 0;
+		}
+		
 		//check if a is more specific than b
 		Attribute a_attr = new Attribute("format",a.getFormat());
 		Attribute b_attr = new Attribute("format",b.getFormat());
@@ -477,7 +536,7 @@ public class OISConsolidator implements ToolOutputConsolidator {
 		while ( iter.hasNext() ) {			
 			ToolOutput result = iter.next();
 			//if the identity section doesn't contain the results from the tool remove it
-			if(!section.hasOutputFromTool(result.getTool().getToolInfo())) {
+			if(result.getTool().canIdentify() && !section.hasOutputFromTool(result.getTool().getToolInfo())) {
 				iter.remove();
 			}
 		}
@@ -634,6 +693,36 @@ public class OISConsolidator implements ToolOutputConsolidator {
 				s.addContent(fitsElement);
 			}
 		}
+
+		
+		
+		
+		//check metadata/child
+		//if child.getParent() !exist in mergedDoc, then create and add these elements to it.
+		//  else, add to existing section in mergedDoc
+		//then do normal xml comparison
+	curSec = "/fits:fits/fits:metadata";
+	//curSec = "/fits/metadata";
+	curSecName = "metadata";
+	s = new Element(curSecName,fitsNS);
+	fits.addContent(s);
+	e = null;
+	while((e = findAnElement(culledResults,curSec,true)) != null) {
+		Element eParent = e.getParentElement();
+		Element metadataType = null;
+		if(!parentContainsChild(s,eParent.getName())) {
+			metadataType = new Element(eParent.getName(),fitsNS);
+			s.addContent(metadataType);
+		}
+		else {
+			metadataType = s.getChild(eParent.getName(),fitsNS);
+		}
+		List<Element> fitsElements = mergeXmlesults(culledResults, e);
+		for(Element fitsElement : fitsElements) {
+			metadataType.addContent(fitsElement);
+		}
+	}
+	
 		
 		//Only use the output from tools that were able to identify
 		// the file and are in the first identity section
@@ -655,31 +744,7 @@ public class OISConsolidator implements ToolOutputConsolidator {
 			}
 		}
 					
-		//check metadata/child
-			//if child.getParent() !exist in mergedDoc, then create and add these elements to it.
-			//  else, add to existing section in mergedDoc
-			//then do normal xml comparison
-		curSec = "/fits:fits/fits:metadata";
-		//curSec = "/fits/metadata";
-		curSecName = "metadata";
-		s = new Element(curSecName,fitsNS);
-		fits.addContent(s);
-		e = null;
-		while((e = findAnElement(culledResults,curSec,true)) != null) {
-			Element eParent = e.getParentElement();
-			Element metadataType = null;
-			if(!parentContainsChild(s,eParent.getName())) {
-				metadataType = new Element(eParent.getName(),fitsNS);
-				s.addContent(metadataType);
-			}
-			else {
-				metadataType = s.getChild(eParent.getName(),fitsNS);
-			}
-			List<Element> fitsElements = mergeXmlesults(culledResults, e);
-			for(Element fitsElement : fitsElements) {
-				metadataType.addContent(fitsElement);
-			}
-		}
+		
 
 		
 		//Consolidate results from each tool

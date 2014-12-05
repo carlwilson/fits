@@ -1,4 +1,3 @@
-
 <!-- ====================================================================== -->
 <!-- Slightly modified version of OIS Standard Build file.                  -->
 <!-- Removed .java files from JAR                                           -->
@@ -38,6 +37,8 @@
   <property name="compile.debug"       value="true"/>
   <property name="compile.deprecation" value="true"/>
   <property name="compile.optimize"    value="true"/>
+  <property name="compile.target"    value="1.6"/>
+  <property name="compile.source"    value="1.6"/>
 
 <!-- ==================== Compilation Classpath =========================== -->
 
@@ -76,7 +77,9 @@
     <javac srcdir="${compile.dirs}"
            debug="${compile.debug}"
            deprecation="${compile.deprecation}"
-	   optimize="${compile.optimize}">
+	   optimize="${compile.optimize}"
+	   target="${compile.target}"
+	   source="${compile.source}">
         <classpath refid="compile.classpath">
         </classpath>
     </javac>
@@ -261,6 +264,8 @@
 		<copy file="cpappend.bat" todir="${output.location.version}"/>
 		<copy file="fits.bat" todir="${output.location.version}"/>
 		<copy file="fits.sh" todir="${output.location.version}"/>
+		<copy file="fits-env.sh" todir="${output.location.version}"/>
+		<copy file="fits-ngserver.sh" todir="${output.location.version}"/>
 		<copy file="RELEASE.txt" todir="${output.location.version}"/>
 		<copy file="COPYING" todir="${output.location.version}"/>
 		<copy file="COPYING.LESSER" todir="${output.location.version}"/>
